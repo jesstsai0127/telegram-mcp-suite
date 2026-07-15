@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>週期性提醒確認</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1c1c1e;
+    color: #f5f5f7;
+    margin: 0;
+    padding: 20px 20px 100px;
+  }
+  .page { max-width: 460px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 500; margin: 8px 0 4px; }
+  .subtitle { font-size: 13px; color: #8e8e93; margin: 0 0 20px; }
+  .field-label { font-size: 11px; color: #8e8e93; margin: 0 0 4px; }
+  input {
+    width: 100%; box-sizing: border-box; background: #242426; color: #f5f5f7;
+    border: 1px solid #3a3a3c; border-radius: 8px; padding: 10px 12px; font-size: 15px;
+    font-family: inherit; margin-bottom: 14px;
+  }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .btn { width: 100%; box-sizing: border-box; font-size: 15px; font-weight: 500; padding: 13px; border-radius: 10px; border: none; cursor: pointer; margin-bottom: 10px; font-family: inherit; }
+  .btn-primary { background: #409cff; color: #fff; }
+  .btn-neutral { background: #313133; color: #f5f5f7; }
+  .link-btn { background: none; border: none; color: #8e8e93; font-size: 13px; cursor: pointer; padding: 8px 0; display: block; margin: 4px auto 0; }
+  /* 取消整個系列是不可逆操作，用跟其他地方一致的警示色（跟 swipe-action/.error 同一個紅），
+     跟可逆的「跳過這次」拉開視覺區隔，不要讓兩者看起來一樣輕量 */
+  .link-btn-danger { color: #ff453a; }
+  .card { background: #242426; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+  .card-line { font-size: 13px; color: #8e8e93; margin: 4px 0 0; }
+  .error { font-size: 13px; color: #ff453a; margin-top: 12px; }
+  .success { font-size: 15px; color: #30d158; text-align: center; margin-top: 40px; }
+</style>
+</head>
+<body>
+  <div class="page" id="page">
+    <h1 id="title"></h1>
+    <p class="subtitle" id="subtitle"></p>
+
+    <div class="card" id="detail-card" style="display:none;"></div>
+
+    <div id="default-actions">
+      <button class="btn btn-primary" id="buy-btn">✅ 買了</button>
+      <button class="btn btn-neutral" id="skip-btn">⏭ 跳過這次</button>
+      <button class="link-btn link-btn-danger" id="cancel-series-btn">取消整個系列，之後不再提醒</button>
+    </div>
+
+    <div id="purchase-form" style="display:none;">
+      <div class="row-2">
+        <div>
+          <p class="field-label">購買數量</p>
+          <input type="number" id="quantity-input">
+        </div>
+        <div>
+          <p class="field-label">實際花費</p>
+          <input type="number" id="price-input">
+        </div>
+      </div>
+      <p class="field-label">購買日期</p>
+      <input type="date" id="date-input" style="color-scheme: dark;">
+      <button class="btn btn-primary" id="confirm-purchase-btn">確認購買</button>
+      <button class="btn btn-neutral" id="cancel-purchase-btn">上一步</button>
+    </div>
+
+    <p class="error" id="error"></p>
+  </div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#1c1c1e');
+  tg.setBackgroundColor('#1c1c1e');
+}
+
+const params = new URLSearchParams(window.location.search);
+const templateId = params.get('templateId') || '';
+const itemTitle = params.get('itemTitle') || '';
+const priority = params.get('priority') || '一般';
+const buyer = params.get('buyer') || '';
+const itemLocation = params.get('location') || '';
+const notes = params.get('notes') || '';
+const icalString = params.get('icalString') || '';
+const firedAt = params.get('firedAt') || '';
+const reminderOffsets = params.get('reminderOffsets') || '';
+const moreText = params.get('moreText') || '';
+
+document.getElementById('title').textContent = `🔔 該買${itemTitle}了`;
+document.getElementById('subtitle').textContent = moreText || '週期性提醒';
+
+const detailLines = [];
+if (buyer && buyer !== '我自己') detailLines.push(`購買人：${buyer}`);
+if (itemLocation) detailLines.push(`地點：${itemLocation}`);
+if (notes) detailLines.push(`備註：${notes}`);
+if (detailLines.length > 0) {
+  const card = document.getElementById('detail-card');
+  card.style.display = 'block';
+  for (const line of detailLines) {
+    const p = document.createElement('p');
+    p.className = 'card-line';
+    p.textContent = line;
+    card.appendChild(p);
+  }
+}
+
+document.getElementById('date-input').value = new Date().toISOString().slice(0, 10);
+
+function showError(message) {
+  document.getElementById('error').textContent = message;
+}
+
+async function submitAction(action, extra) {
+  showError('');
+  try {
+    const res = await fetch('/api/shopping/recurring-confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        templateId, action, itemTitle, priority, buyer, location: itemLocation, notes,
+        icalString, firedAt, reminderOffsets, ...extra
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (tg) {
+      tg.close();
+    } else {
+      document.getElementById('page').innerHTML = `<p class="success">${data.text || '已完成'}</p>`;
+    }
+  } catch (err) {
+    showError(err.message || String(err));
+  }
+}
+
+document.getElementById('buy-btn').addEventListener('click', () => {
+  document.getElementById('default-actions').style.display = 'none';
+  document.getElementById('purchase-form').style.display = 'block';
+});
+document.getElementById('cancel-purchase-btn').addEventListener('click', () => {
+  document.getElementById('purchase-form').style.display = 'none';
+  document.getElementById('default-actions').style.display = 'block';
+});
+document.getElementById('confirm-purchase-btn').addEventListener('click', () => {
+  const quantityRaw = document.getElementById('quantity-input').value;
+  const priceRaw = document.getElementById('price-input').value;
+  const dateRaw = document.getElementById('date-input').value;
+  submitAction('purchase', {
+    quantityPurchased: quantityRaw !== '' ? Number(quantityRaw) : undefined,
+    actualPrice: priceRaw !== '' ? Number(priceRaw) : undefined,
+    purchasedDate: dateRaw || undefined
+  });
+});
+document.getElementById('skip-btn').addEventListener('click', () => submitAction('skip'));
+document.getElementById('cancel-series-btn').addEventListener('click', () => {
+  if (!confirm(`確定要取消「${itemTitle}」整個週期性系列嗎？之後不會再提醒。`)) return;
+  submitAction('cancelSeries');
+});
+</script>
+</body>
+</html>

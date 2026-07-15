@@ -1,0 +1,15 @@
+[Unit]
+Description=AXIS tg-bridge (Telegram Assistant Bot + Skill Interface)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=framework
+WorkingDirectory=/home/framework/projects/telegram-mcp-suite/tg-bridge
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

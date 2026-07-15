@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+chat_id.txt
+chat_id.*.txt
+tg-bridge/config/notion-dbs.json
+tg-bridge/config/notion-dbs.*.json
+!tg-bridge/config/notion-dbs.example.json
+tg-bridge/config/skill-registry.test.json
+tg-bridge/persona.test.md

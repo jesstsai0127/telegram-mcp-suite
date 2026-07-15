@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>待辦清單</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1c1c1e;
+    color: #f5f5f7;
+    margin: 0;
+    padding: 44px 20px;
+  }
+  .page { max-width: 460px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; }
+  .section-label { font-size: 12px; font-weight: 500; letter-spacing: 0.04em; color: #8e8e93; text-transform: uppercase; margin: 24px 0 10px; }
+  .section-label:first-of-type { margin-top: 0; }
+
+  /* 智慧清單分頁——比照 Apple 提醒事項的「今天／已排程／全部／旗標」磁磚選單，
+     用色塊+數字取代純文字分頁，點了之後高亮目前選中的那個 */
+  .smart-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
+  .smart-tile {
+    background: #242426; border-radius: 14px; padding: 12px 14px; cursor: pointer;
+    border: 1.5px solid transparent; transition: border-color .15s;
+  }
+  .smart-tile.active { border-color: #409cff; }
+  .smart-tile-icon { font-size: 20px; line-height: 1; }
+  .smart-tile-count { font-size: 22px; font-weight: 600; margin: 6px 0 2px; }
+  .smart-tile-label { font-size: 12px; color: #8e8e93; }
+
+  /* 單列項目：圓圈勾選 + 標題 + 優先度驚嘆號 + 備註副標 + 右側到期資訊，
+     外層 .swipe-row 負責滑動手勢，內層 .swipe-content 是真正位移的那一層 */
+  .swipe-row { position: relative; border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
+  .swipe-action {
+    position: absolute; top: 0; right: 0; height: 100%; width: 84px;
+    background: #ff453a; color: #fff; border: none; font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .swipe-content {
+    position: relative; background: #242426; padding: 13px 16px;
+    display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+    transition: transform .18s ease; touch-action: pan-y;
+  }
+  .swipe-content.revealed { transform: translateX(-84px); }
+
+  .check-circle {
+    flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid #636366; margin-top: 1px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; color: transparent;
+  }
+  .check-circle.recurring-icon {
+    border: none; color: #409cff; font-size: 16px; cursor: default;
+  }
+  .row-body { flex: 1; min-width: 0; }
+  .row-title-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .priority-mark { color: #ff453a; font-weight: 600; font-size: 14px; }
+  .row-title { font-size: 15px; font-weight: 500; color: #f5f5f7; }
+  .row-subtitle { font-size: 13px; color: #8e8e93; margin-top: 2px; line-height: 1.4; }
+  .row-meta-line { display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .row-due { font-size: 12px; color: #409cff; }
+  .row-category { font-size: 11px; color: #8e8e93; background: rgba(142,142,147,0.16); padding: 1px 7px; border-radius: 7px; }
+
+  .badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 8px; white-space: nowrap; }
+  .card { background: #242426; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-title { font-size: 15px; font-weight: 500; color: #f5f5f7; }
+  .badge-priority-高 { background: rgba(255,69,58,0.16); color: #ff453a; }
+  .badge-priority-中 { background: rgba(142,142,147,0.16); color: #8e8e93; }
+  .badge-priority-低 { background: rgba(48,209,88,0.16); color: #30d158; }
+  .card-meta { font-size: 13px; color: #8e8e93; margin-top: 6px; line-height: 1.5; }
+  .empty { font-size: 14px; color: #8e8e93; padding: 13px 0; }
+  .error { font-size: 13px; color: #ff453a; margin-top: 24px; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn { font-size: 13px; font-weight: 500; padding: 7px 12px; border-radius: 8px; border: none; cursor: pointer; }
+  .btn-primary { background: #409cff; color: #fff; }
+  .btn-neutral { background: #313133; color: #f5f5f7; }
+  .edit-form { margin-top: 10px; padding: 0 16px 14px; background: #242426; border-radius: 0 0 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .edit-form input, .edit-form select, .edit-form textarea {
+    width: 100%; box-sizing: border-box; background: #1c1c1e; color: #f5f5f7;
+    border: 1px solid #3a3a3c; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit;
+  }
+  .field-label { font-size: 11px; color: #8e8e93; margin-bottom: 2px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .search-card { background: #242426; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+  .search-row { display: flex; gap: 8px; align-items: flex-end; }
+  .search-row .field-label { margin-top: 0; }
+  /* .search-row 的直接 flex 子項是包 label+input 的 wrapper div，不是 input 本身——
+     這兩條規則要對到 wrapper 才有效，對到 input 完全不會生效（真實案例：這兩個欄位
+     一個被擠成 71px、一個變成 223px，寬度完全跑掉） */
+  .search-row .search-field-keyword { flex: 1; min-width: 0; }
+  .search-row .search-field-months { flex: 0 0 90px; }
+</style>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="page">
+    <h1 id="title"></h1>
+
+    <div class="smart-lists" id="smart-lists"></div>
+
+    <p class="section-label" id="active-label"></p>
+    <div id="active-list"></div>
+
+    <p class="section-label" id="history-label"></p>
+    <div class="search-card">
+      <div class="search-row">
+        <div class="edit-form search-field-keyword" style="margin-top:0;padding:0;background:none;">
+          <p class="field-label" id="search-keyword-label"></p>
+          <input type="text" id="search-keyword" name="keyword">
+        </div>
+        <div class="edit-form search-field-months" style="margin-top:0;padding:0;background:none;">
+          <p class="field-label" id="search-months-label"></p>
+          <input type="number" id="search-months" name="months" min="1" value="6">
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="search-btn"></button>
+        <button class="btn btn-neutral" id="search-clear-btn"></button>
+      </div>
+    </div>
+    <div id="history-sections"></div>
+
+    <div class="error" id="error"></div>
+  </div>
+
+<script>
+// 2026-07-09：現在也透過 Telegram WebApp（web_app 按鈕）開啟，不只是純連結——
+// 呼叫 ready()/expand() 讓它用內嵌的全高度面板呈現而不是浮動的瀏覽器分頁，
+// 顏色跟 todo-add.html 用同一套深色，維持外框跟頁面本體一致
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#1c1c1e');
+  tg.setBackgroundColor('#1c1c1e');
+}
+
+const STRINGS = {
+  'zh-Hant': {
+    title: '待辦清單',
+    smartToday: '今天', smartScheduled: '已排程', smartAll: '全部', smartFlagged: '旗標',
+    activeLabel: '待辦事項',
+    emptyActive: '這個分類目前沒有待辦',
+    recurringLabel: '週期性',
+    duePrefix: '到期：', nextPrefix: '下次：',
+    notesPrefix: '備註：',
+    edit: '編輯', save: '儲存', cancelEdit: '取消編輯',
+    swipeDelete: '取消',
+    confirmCancel: '確定要取消這個待辦嗎？',
+    confirmCancelSeries: '確定要取消整個週期性系列嗎？之後不會再提醒。',
+    labelTitle: '標題', labelPriority: '優先度', labelCategory: '分類', labelDueDate: '到期時間', labelNotes: '備註',
+    saveFailed: '儲存失敗，換個方式再試一次',
+    historyLabel: '已完成歷史／查詢紀錄',
+    searchKeywordLabel: '關鍵字（留空查全部）', searchMonthsLabel: '過去幾個月',
+    searchBtn: '查詢', searchClearBtn: '清除搜尋',
+    searchResultsLabel: (n) => `搜尋結果 · ${n} 筆`, emptySearch: '沒有符合的已完成待辦',
+    emptyHistory: '還沒有已完成的待辦', completedDatePrefix: '完成：'
+  }
+};
+const LOCALE = 'zh-Hant';
+function t(key, ...args) {
+  const v = STRINGS[LOCALE][key];
+  return typeof v === 'function' ? v(...args) : v;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const PRIORITIES = ['高', '中', '低'];
+// Apple 提醒事項的慣例：驚嘆號數量對應優先度高低，紅色，數量越多代表越優先
+const PRIORITY_MARK = { 高: '!!!', 中: '!!', 低: '!' };
+
+async function patchTask(id, changes) {
+  const res = await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+function labeledInput(container, label, type, value) {
+  const wrap = el('div', '');
+  wrap.appendChild(el('p', 'field-label', label));
+  const input = el('input', '');
+  input.type = type;
+  input.value = value;
+  wrap.appendChild(input);
+  container.appendChild(wrap);
+  return input;
+}
+
+function labeledSelect(container, label, options, selected) {
+  const wrap = el('div', '');
+  wrap.appendChild(el('p', 'field-label', label));
+  const select = el('select', '');
+  for (const opt of options) {
+    const optionEl = el('option', '', opt);
+    optionEl.value = opt;
+    if (opt === selected) optionEl.selected = true;
+    select.appendChild(optionEl);
+  }
+  wrap.appendChild(select);
+  container.appendChild(wrap);
+  return select;
+}
+
+function labeledTextarea(container, label, value) {
+  const wrap = el('div', '');
+  wrap.appendChild(el('p', 'field-label', label));
+  const textarea = el('textarea', '');
+  textarea.value = value;
+  textarea.rows = 2;
+  wrap.appendChild(textarea);
+  container.appendChild(wrap);
+  return textarea;
+}
+
+// dueDate 目前是給人看的格式化字串（例如 "2026-07-10 14:00"），datetime-local 輸入框
+// 需要 "2026-07-10T14:00"——這裡只做展示用的寬鬆轉換，真正送出的值以使用者在表單裡
+// 打的原始字串為主，不強求先解析成 Date 物件
+function toDatetimeLocalValue(displayValue) {
+  if (!displayValue) return '';
+  return displayValue.replace(' ', 'T');
+}
+
+function buildOneTimeEditForm(item, onChanged) {
+  const form = el('div', 'edit-form');
+  const titleInput = labeledInput(form, t('labelTitle'), 'text', item.title);
+  const row = el('div', 'row-2');
+  form.appendChild(row);
+  const prioritySelect = labeledSelect(row, t('labelPriority'), PRIORITIES, item.priority);
+  const dueInput = labeledInput(row, t('labelDueDate'), 'datetime-local', toDatetimeLocalValue(item.dueDate));
+  // 分類故意用文字輸入而不是下拉選單——使用者要能隨時打一個新分類，不受限於既有選項
+  const categoryInput = labeledInput(form, t('labelCategory'), 'text', item.category || '');
+  const notesInput = labeledTextarea(form, t('labelNotes'), item.notes || '');
+
+  const actions = el('div', 'actions');
+  const saveBtn = el('button', 'btn btn-primary', t('save'));
+  const cancelBtn = el('button', 'btn btn-neutral', t('cancelEdit'));
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  form.appendChild(actions);
+
+  cancelBtn.addEventListener('click', () => form.remove());
+  saveBtn.addEventListener('click', async () => {
+    const changes = {
+      title: titleInput.value.trim(),
+      priority: prioritySelect.value,
+      category: categoryInput.value.trim(),
+      notes: notesInput.value.trim()
+    };
+    // 一律送出，不是「有值才送」——清空到期時間也要能存回去，不然「清空＝不送」會讓
+    // 伺服器完全收不到這個欄位，Notion 裡的舊值就永遠清不掉（2026-07-15 真實案例）
+    changes.due_date = dueInput.value ? dueInput.value.replace('T', ' ') : null;
+    try {
+      await patchTask(item.id, changes);
+      onChanged();
+    } catch (err) {
+      alert(t('saveFailed'));
+    }
+  });
+
+  return form;
+}
+
+function buildRecurringEditForm(item, onChanged) {
+  const form = el('div', 'edit-form');
+  const titleInput = labeledInput(form, t('labelTitle'), 'text', item.title);
+  const row = el('div', 'row-2');
+  form.appendChild(row);
+  const prioritySelect = labeledSelect(row, t('labelPriority'), PRIORITIES, item.priority);
+  const categoryInput = labeledInput(row, t('labelCategory'), 'text', item.category || '');
+
+  const actions = el('div', 'actions');
+  const saveBtn = el('button', 'btn btn-primary', t('save'));
+  const cancelBtn = el('button', 'btn btn-neutral', t('cancelEdit'));
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  form.appendChild(actions);
+
+  cancelBtn.addEventListener('click', () => form.remove());
+  saveBtn.addEventListener('click', async () => {
+    const changes = { title: titleInput.value.trim(), priority: prioritySelect.value, category: categoryInput.value.trim() };
+    try {
+      await patchTask(item.id, changes);
+      onChanged();
+    } catch (err) {
+      alert(t('saveFailed'));
+    }
+  });
+
+  return form;
+}
+
+// 滑動手勢：用 Pointer Events 統一處理觸控（手機）跟滑鼠（桌機測試/使用），拖曳超過
+// 門檻就固定顯示右側的取消按鈕（transform 位移），沒超過門檻就彈回原位。真的有拖曳過
+// 的話要攔截接下來的 click，不然放開手指後既顯示了取消按鈕、又誤觸發打開編輯表單
+function attachSwipe(swipeContent, onReveal) {
+  let startX = null;
+  let currentX = 0;
+  let dragged = false;
+  const THRESHOLD = 40;
+
+  function onStart(x) { startX = x; dragged = false; }
+  function onMove(x) {
+    if (startX === null) return;
+    currentX = x - startX;
+    if (Math.abs(currentX) > 8) dragged = true;
+  }
+  function onEnd() {
+    if (startX === null) return;
+    if (currentX < -THRESHOLD) {
+      swipeContent.classList.add('revealed');
+      if (onReveal) onReveal();
+    } else {
+      swipeContent.classList.remove('revealed');
+    }
+    startX = null;
+    currentX = 0;
+  }
+
+  swipeContent.addEventListener('pointerdown', (e) => onStart(e.clientX));
+  swipeContent.addEventListener('pointermove', (e) => onMove(e.clientX));
+  swipeContent.addEventListener('pointerup', onEnd);
+  swipeContent.addEventListener('pointercancel', onEnd);
+  swipeContent.addEventListener('click', (e) => {
+    if (dragged) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+}
+
+// 建立一列 Apple 風格的待辦項目：圓圈（一次性可點擊完成／週期性顯示循環圖示）+
+// 優先度驚嘆號 + 標題 + 備註副標 + 到期/下次時間 + 分類標籤；外層包一層滑動手勢，
+// 滑到底露出紅色取消按鈕（跟按鈕式的操作是同一個 API，只是互動方式改成手勢）
+function buildRow(item, { onToggleDone, onCancel, onEdit }) {
+  const swipeRow = el('div', 'swipe-row');
+
+  const swipeAction = el('button', 'swipe-action', t('swipeDelete'));
+  swipeRow.appendChild(swipeAction);
+
+  const content = el('div', 'swipe-content');
+  swipeRow.appendChild(content);
+
+  const circle = el('div', item.isRecurring ? 'check-circle recurring-icon' : 'check-circle');
+  if (item.isRecurring) {
+    circle.textContent = '🔁';
+  } else {
+    circle.addEventListener('click', (e) => { e.stopPropagation(); onToggleDone(); });
+  }
+  content.appendChild(circle);
+
+  const body = el('div', 'row-body');
+  const titleLine = el('div', 'row-title-line');
+  if (item.priority && PRIORITY_MARK[item.priority]) {
+    titleLine.appendChild(el('span', 'priority-mark', PRIORITY_MARK[item.priority]));
+  }
+  titleLine.appendChild(el('span', 'row-title', item.title));
+  body.appendChild(titleLine);
+
+  if (item.notes) body.appendChild(el('p', 'row-subtitle', item.notes));
+
+  const metaLine = el('div', 'row-meta-line');
+  const dueText = item.isRecurring ? (item.nextTrigger ? `${t('nextPrefix')}${item.nextTrigger}` : null)
+    : (item.dueDate ? `${t('duePrefix')}${item.dueDate}` : null);
+  if (dueText) metaLine.appendChild(el('span', 'row-due', dueText));
+  if (item.isRecurring) metaLine.appendChild(el('span', 'row-category', t('recurringLabel')));
+  if (item.category) metaLine.appendChild(el('span', 'row-category', item.category));
+  if (metaLine.childNodes.length > 0) body.appendChild(metaLine);
+
+  content.appendChild(body);
+
+  content.addEventListener('click', () => onEdit());
+  swipeAction.addEventListener('click', (e) => { e.stopPropagation(); onCancel(); });
+  attachSwipe(content);
+
+  return swipeRow;
+}
+
+function renderActive(container, items, onChanged) {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.appendChild(el('p', 'empty', t('emptyActive')));
+    return;
+  }
+  for (const item of items) {
+    let formEl = null;
+    const row = buildRow(item, {
+      onToggleDone: async () => {
+        try { await patchTask(item.id, { status: '完成' }); onChanged(); }
+        catch (err) { alert(t('saveFailed')); }
+      },
+      onCancel: async () => {
+        const msg = item.isRecurring ? t('confirmCancelSeries') : t('confirmCancel');
+        if (!confirm(msg)) return;
+        try { await patchTask(item.id, { status: '取消' }); onChanged(); }
+        catch (err) { alert(t('saveFailed')); }
+      },
+      onEdit: () => {
+        if (formEl) { formEl.remove(); formEl = null; return; }
+        formEl = item.isRecurring ? buildRecurringEditForm(item, onChanged) : buildOneTimeEditForm(item, onChanged);
+        row.after(formEl);
+      }
+    });
+    container.appendChild(row);
+  }
+}
+
+// 已完成歷史／查詢結果，跟 shopping.html 同一種做法：兩者共用 history-sections 容器，
+// 一次只顯示其中一種內容，不是疊加
+function renderHistory(container, items) {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.appendChild(el('p', 'empty', t('emptyHistory')));
+    return;
+  }
+  const groups = new Map();
+  for (const item of items) {
+    const month = (item.completedDate || '').slice(0, 7) || '未知';
+    if (!groups.has(month)) groups.set(month, []);
+    groups.get(month).push(item);
+  }
+  for (const [month, monthItems] of groups) {
+    container.appendChild(el('p', 'section-label', month));
+    for (const item of monthItems) {
+      container.appendChild(renderHistoryCard(item));
+    }
+  }
+}
+
+function renderSearchResults(container, items) {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.appendChild(el('p', 'empty', t('emptySearch')));
+    return;
+  }
+  for (const item of items) {
+    container.appendChild(renderHistoryCard(item));
+  }
+}
+
+function renderHistoryCard(item) {
+  const card = el('div', 'card');
+  const top = el('div', 'card-top');
+  top.appendChild(el('span', 'card-title', item.title));
+  if (item.priority) top.appendChild(el('span', `badge badge-priority-${item.priority}`, item.priority));
+  card.appendChild(top);
+
+  const metaLines = [`${t('completedDatePrefix')}${item.completedDate ? item.completedDate.slice(0, 10) : '未知'}`];
+  if (item.category) metaLines.push(item.category);
+  if (item.notes) metaLines.push(`${t('notesPrefix')}${item.notes}`);
+  card.appendChild(el('p', 'card-meta', metaLines.join(' ｜ ')));
+
+  return card;
+}
+
+let lastCompleted = [];
+
+async function runSearch() {
+  const keyword = document.getElementById('search-keyword').value.trim();
+  const months = document.getElementById('search-months').value || '6';
+  const params = new URLSearchParams({ q: keyword, months });
+  const res = await fetch(`/api/task-search?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const results = data.results || [];
+  document.getElementById('history-label').textContent = t('searchResultsLabel', results.length);
+  renderSearchResults(document.getElementById('history-sections'), results);
+}
+
+function clearSearch() {
+  document.getElementById('search-keyword').value = '';
+  document.getElementById('search-months').value = '6';
+  document.getElementById('history-label').textContent = t('historyLabel');
+  renderHistory(document.getElementById('history-sections'), lastCompleted);
+}
+
+// 今天的日期（YYYY-MM-DD），跟後端 formatDateTimeShort 輸出格式一致，直接做字串比對，
+// 不需要額外的時區轉換邏輯
+function todayStr() {
+  const d = new Date();
+  return new Intl.DateTimeFormat('sv-SE').format(d);
+}
+
+const SMART_LISTS = [
+  { key: 'today', icon: '📅', label: 'smartToday' },
+  { key: 'scheduled', icon: '📆', label: 'smartScheduled' },
+  { key: 'all', icon: '📋', label: 'smartAll' },
+  { key: 'flagged', icon: '🚩', label: 'smartFlagged' }
+];
+let currentSmartList = 'today';
+let allItems = [];
+
+// 智慧清單分組邏輯（比照 Apple 提醒事項）：今天＝一次性且到期日是今天；已排程＝一次性
+// 且到期日在未來，加上所有週期性項目（週期性本來就是「已經排好下次時間」）；全部＝不篩選
+// （包含完全沒有到期日、還在考慮的待辦）；旗標＝優先度「高」當作旗標的替代（沒有專屬
+// 旗標欄位，這是跟使用者確認過的對應方式）
+function computeBucket(items, key) {
+  const today = todayStr();
+  if (key === 'all') return items;
+  if (key === 'flagged') return items.filter(i => i.priority === '高');
+  if (key === 'today') return items.filter(i => !i.isRecurring && i.dueDate && i.dueDate.slice(0, 10) === today);
+  if (key === 'scheduled') {
+    return items.filter(i => i.isRecurring || (i.dueDate && i.dueDate.slice(0, 10) > today));
+  }
+  return items;
+}
+
+function renderSmartLists(container, items, onSelect) {
+  container.innerHTML = '';
+  for (const list of SMART_LISTS) {
+    const tile = el('div', `smart-tile${list.key === currentSmartList ? ' active' : ''}`);
+    tile.appendChild(el('div', 'smart-tile-icon', list.icon));
+    tile.appendChild(el('div', 'smart-tile-count', String(computeBucket(items, list.key).length)));
+    tile.appendChild(el('div', 'smart-tile-label', t(list.label)));
+    tile.addEventListener('click', () => onSelect(list.key));
+    container.appendChild(tile);
+  }
+}
+
+function renderAllUI() {
+  renderSmartLists(document.getElementById('smart-lists'), allItems, (key) => {
+    currentSmartList = key;
+    renderAllUI();
+  });
+  renderActive(document.getElementById('active-list'), computeBucket(allItems, currentSmartList), load);
+}
+
+async function load() {
+  document.getElementById('title').textContent = t('title');
+  const res = await fetch('/api/todo-recurring');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+
+  const oneTime = (data.oneTime || []).map(i => ({ ...i, isRecurring: false }));
+  const recurring = (data.recurring || []).map(i => ({ ...i, isRecurring: true }));
+  const completed = data.completed || [];
+  lastCompleted = completed;
+  allItems = [...oneTime, ...recurring];
+
+  document.getElementById('active-label').textContent = t('activeLabel');
+  renderAllUI();
+
+  document.getElementById('history-label').textContent = t('historyLabel');
+  document.getElementById('search-keyword-label').textContent = t('searchKeywordLabel');
+  document.getElementById('search-months-label').textContent = t('searchMonthsLabel');
+  document.getElementById('search-btn').textContent = t('searchBtn');
+  document.getElementById('search-clear-btn').textContent = t('searchClearBtn');
+
+  renderHistory(document.getElementById('history-sections'), completed);
+}
+
+document.getElementById('search-btn').addEventListener('click', () => {
+  runSearch().catch(err => { document.getElementById('error').textContent = err.message || String(err); });
+});
+document.getElementById('search-clear-btn').addEventListener('click', clearSearch);
+document.getElementById('search-keyword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('search-btn').click();
+});
+
+load().catch(err => {
+  document.getElementById('error').textContent = err.message || String(err);
+});
+</script>
+</body>
+</html>

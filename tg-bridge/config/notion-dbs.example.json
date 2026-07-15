@@ -1,0 +1,12 @@
+{
+  "Ideas": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Tasks": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Shopping": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Projects": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Search Cache": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Operation Log": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Skill Registry": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Health": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Diet": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" },
+  "Activity": { "database_id": "your-database-id", "data_source_id": "your-data-source-id" }
+}

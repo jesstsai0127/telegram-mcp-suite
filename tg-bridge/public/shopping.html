@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1c1c1e;
+    color: #f5f5f7;
+    margin: 0;
+    padding: 44px 20px;
+  }
+  .page { max-width: 460px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 16px; }
+  .section-label { font-size: 12px; font-weight: 500; letter-spacing: 0.04em; color: #8e8e93; text-transform: uppercase; margin: 24px 0 10px; }
+  .section-label:first-of-type { margin-top: 0; }
+
+  /* 智慧清單分頁——Shopping 用優先度分組（急需/一般/想買/全部），不是日期，
+     跟 todo-recurring.html 的今天/已排程分組邏輯不同，購物本來就是「多急著買」為主軸 */
+  .smart-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 22px; }
+  .smart-tile {
+    background: #242426; border-radius: 14px; padding: 12px 14px; cursor: pointer;
+    border: 1.5px solid transparent; transition: border-color .15s;
+  }
+  .smart-tile.active { border-color: #409cff; }
+  .smart-tile-icon { font-size: 20px; line-height: 1; }
+  .smart-tile-count { font-size: 22px; font-weight: 600; margin: 6px 0 2px; }
+  .smart-tile-label { font-size: 12px; color: #8e8e93; }
+
+  .swipe-row { position: relative; border-radius: 14px; overflow: hidden; margin-bottom: 8px; }
+  .swipe-action {
+    position: absolute; top: 0; right: 0; height: 100%; width: 84px;
+    background: #ff453a; color: #fff; border: none; font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .swipe-content {
+    position: relative; background: #242426; padding: 13px 16px;
+    display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+    transition: transform .18s ease; touch-action: pan-y;
+  }
+  .swipe-content.revealed { transform: translateX(-84px); }
+
+  .check-circle {
+    flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid #636366; margin-top: 1px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; color: transparent;
+  }
+  .check-circle.recurring-icon {
+    border: none; color: #409cff; font-size: 16px; cursor: default;
+  }
+  .row-body { flex: 1; min-width: 0; }
+  .row-title-line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .priority-mark { color: #ff453a; font-weight: 600; font-size: 14px; }
+  .row-title { font-size: 15px; font-weight: 500; color: #f5f5f7; }
+  .row-subtitle { font-size: 13px; color: #8e8e93; margin-top: 2px; line-height: 1.4; }
+  .row-meta-line { display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .row-due { font-size: 12px; color: #409cff; }
+  .row-detail { font-size: 12px; color: #8e8e93; }
+  .row-category { font-size: 11px; color: #8e8e93; background: rgba(142,142,147,0.16); padding: 1px 7px; border-radius: 7px; }
+  /* 圓圈（左側，開購買表單）跟卡片本體（點了開編輯表單）是相鄰但功能不同的兩個點擊區，
+     加一個右側 chevron 提示「這一列本身可以點開」，跟左側圓圈的購買動作視覺上拉開 */
+  .row-chevron { flex: 0 0 auto; color: #636366; font-size: 14px; align-self: center; }
+
+  .badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 8px; white-space: nowrap; }
+  .card { background: #242426; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
+  .card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-title { font-size: 15px; font-weight: 500; color: #f5f5f7; }
+  .card-meta { font-size: 13px; color: #8e8e93; margin-top: 6px; line-height: 1.5; }
+  .card-price { font-size: 20px; font-weight: 600; color: #409cff; margin: 6px 0 0; }
+  .card-unit { font-size: 13px; color: #8e8e93; margin-left: 6px; font-weight: 400; }
+  .empty { font-size: 14px; color: #8e8e93; padding: 13px 0; }
+  .error { font-size: 13px; color: #ff453a; margin-top: 24px; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn { font-size: 13px; font-weight: 500; padding: 7px 12px; border-radius: 8px; border: none; cursor: pointer; }
+  .btn-primary { background: #409cff; color: #fff; }
+  .btn-success { background: rgba(48,209,88,0.16); color: #30d158; }
+  .btn-neutral { background: #313133; color: #f5f5f7; }
+  .edit-form { margin-top: 10px; padding: 0 16px 14px; background: #242426; border-radius: 0 0 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .edit-form input, .edit-form select, .edit-form textarea {
+    width: 100%; box-sizing: border-box; background: #1c1c1e; color: #f5f5f7;
+    border: 1px solid #3a3a3c; border-radius: 8px; padding: 8px 10px; font-size: 14px; font-family: inherit;
+  }
+  .field-label { font-size: 11px; color: #8e8e93; margin-bottom: 2px; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .search-card { background: #242426; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+  .search-row { display: flex; gap: 8px; align-items: flex-end; }
+  .search-row .field-label { margin-top: 0; }
+  .search-row .search-field-keyword { flex: 1; min-width: 0; }
+  .search-row .search-field-months { flex: 0 0 90px; }
+  .link-btn { background: none; border: none; color: #409cff; font-size: 13px; cursor: pointer; padding: 0; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <h1 id="title"></h1>
+
+    <div class="smart-lists" id="smart-lists"></div>
+
+    <p class="section-label" id="pending-label"></p>
+    <div id="pending-list"></div>
+
+    <p class="section-label" id="history-label"></p>
+    <div class="search-card">
+      <div class="search-row">
+        <div class="edit-form search-field-keyword" style="margin-top:0;padding:0;background:none;">
+          <p class="field-label" id="search-keyword-label"></p>
+          <input type="text" id="search-keyword" name="keyword">
+        </div>
+        <div class="edit-form search-field-months" style="margin-top:0;padding:0;background:none;">
+          <p class="field-label" id="search-months-label"></p>
+          <input type="number" id="search-months" name="months" min="1" value="6">
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="search-btn"></button>
+        <button class="btn btn-neutral" id="search-clear-btn"></button>
+      </div>
+    </div>
+
+    <div id="history-sections"></div>
+
+    <div class="error" id="error"></div>
+  </div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#1c1c1e');
+  tg.setBackgroundColor('#1c1c1e');
+}
+
+const STRINGS = {
+  'zh-Hant': {
+    title: 'Shopping',
+    smartUrgent: '急需', smartGeneral: '一般', smartWant: '想買', smartAll: '全部',
+    pendingLabel: '待購清單',
+    emptyPending: '這個分類目前沒有待購項目',
+    emptyHistory: '還沒有購買紀錄',
+    recurringLabel: '週期性',
+    nextTriggerPrefix: '下次提醒：',
+    duePrefix: '到期：',
+    labelDueDate: '到期時間',
+    buyerPrefix: '購買人：',
+    locationPrefix: '地點：',
+    quantityPrefix: '數量：',
+    priceEstimatePrefix: '預估：',
+    actualPricePrefix: '花費：',
+    notesPrefix: '備註：',
+    edit: '編輯', save: '儲存', cancelEdit: '取消編輯',
+    swipeDelete: '移除',
+    confirmCancel: '確定要取消這個項目嗎？',
+    confirmCancelSeries: '確定要取消整個週期性系列嗎？之後不會再提醒。',
+    labelTitle: '名稱', labelPriority: '優先度', labelCategory: '分類', labelBuyer: '購買人', labelLocation: '地點',
+    labelQuantityNeeded: '需要數量', labelPriceEstimate: '預估價格', labelNotes: '備註',
+    labelQuantityPurchased: '購買數量', labelActualPrice: '實際花費', labelPurchasedDate: '購買日期',
+    confirmPurchase: '確認購買', saveFailed: '儲存失敗，換個方式再試一次',
+    historyLabel: '已購買歷史／查詢紀錄',
+    searchKeywordLabel: '關鍵字（留空查全部）', searchMonthsLabel: '過去幾個月',
+    searchBtn: '查詢', searchClearBtn: '清除搜尋', unitPriceSuffix: '/單位',
+    searchResultsLabel: (n) => `搜尋結果 · ${n} 筆`, emptySearch: '沒有符合的購買紀錄'
+  }
+};
+const LOCALE = 'zh-Hant';
+function t(key, ...args) {
+  const v = STRINGS[LOCALE][key];
+  return typeof v === 'function' ? v(...args) : v;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const PRIORITIES = ['急需', '一般', '想買'];
+// 只有「急需」給驚嘆號視覺強調，跟 todo-recurring.html 的高/中/低三級不同——
+// 購物優先度本來就已經靠智慧清單分頁分組了，這裡不用再疊加三種強度
+const PRIORITY_MARK = { 急需: '!!!' };
+
+async function patchShopping(id, changes) {
+  const res = await fetch(`/api/shopping/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ changes })
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+function labeledInput(container, label, type, value) {
+  const wrap = el('div', '');
+  wrap.appendChild(el('p', 'field-label', label));
+  const input = el('input', '');
+  input.type = type;
+  input.value = value;
+  wrap.appendChild(input);
+  container.appendChild(wrap);
+  return input;
+}
+
+function labeledSelect(container, label, options, selected) {
+  const wrap = el('div', '');
+  wrap.appendChild(el('p', 'field-label', label));
+  const select = el('select', '');
+  for (const opt of options) {
+    const optionEl = el('option', '', opt);
+    optionEl.value = opt;
+    if (opt === selected) optionEl.selected = true;
+    select.appendChild(optionEl);
+  }
+  wrap.appendChild(select);
+  container.appendChild(wrap);
+  return select;
+}
+
+function labeledTextarea(container, label, value) {
+  const wrap = el('div', '');
+  wrap.appendChild(el('p', 'field-label', label));
+  const textarea = el('textarea', '');
+  textarea.value = value;
+  textarea.rows = 2;
+  wrap.appendChild(textarea);
+  container.appendChild(wrap);
+  return textarea;
+}
+
+// dueDate 目前是給人看的格式化字串（例如 "2026-07-15 09:00"），datetime-local 輸入框
+// 需要 "2026-07-15T09:00"——這裡只做展示用的寬鬆轉換，真正送出的值以使用者在表單裡
+// 打的原始字串為主，不強求先解析成 Date 物件
+function toDatetimeLocalValue(displayValue) {
+  if (!displayValue) return '';
+  return displayValue.replace(' ', 'T');
+}
+
+function buildEditForm(item, onChanged) {
+  const form = el('div', 'edit-form');
+
+  const titleInput = labeledInput(form, t('labelTitle'), 'text', item.title);
+  const row1 = el('div', 'row-2');
+  form.appendChild(row1);
+  const prioritySelect = labeledSelect(row1, t('labelPriority'), PRIORITIES, item.priority);
+  // 分類故意用文字輸入而不是下拉選單——使用者要能隨時打一個新分類，不受限於既有選項
+  const categoryInput = labeledInput(row1, t('labelCategory'), 'text', item.category || '');
+  const row2 = el('div', 'row-2');
+  form.appendChild(row2);
+  const buyerInput = labeledInput(row2, t('labelBuyer'), 'text', item.buyer || '');
+  const locationInput = labeledInput(row2, t('labelLocation'), 'text', item.location || '');
+  const row3 = el('div', 'row-2');
+  form.appendChild(row3);
+  const quantityInput = labeledInput(row3, t('labelQuantityNeeded'), 'number', item.quantityNeeded ?? '');
+  const priceInput = labeledInput(row3, t('labelPriceEstimate'), 'number', item.priceEstimate ?? '');
+  // 週期性模板不能改到期日——它靠 Next Trigger/Occurrence At 驅動，不是 Due Date，
+  // 這裡只給一次性項目顯示（跟卡片顯示邏輯一致）
+  const dueInput = item.type !== '週期性'
+    ? labeledInput(form, t('labelDueDate'), 'datetime-local', toDatetimeLocalValue(item.dueDate))
+    : null;
+  const notesInput = labeledTextarea(form, t('labelNotes'), item.notes || '');
+
+  const actions = el('div', 'actions');
+  const saveBtn = el('button', 'btn btn-primary', t('save'));
+  const cancelBtn = el('button', 'btn btn-neutral', t('cancelEdit'));
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  form.appendChild(actions);
+
+  cancelBtn.addEventListener('click', () => form.remove());
+  saveBtn.addEventListener('click', async () => {
+    const changes = {
+      title: titleInput.value.trim(),
+      priority: prioritySelect.value,
+      category: categoryInput.value.trim(),
+      buyer: buyerInput.value.trim(),
+      location: locationInput.value.trim(),
+      notes: notesInput.value.trim()
+    };
+    if (quantityInput.value !== '') changes.quantityNeeded = Number(quantityInput.value);
+    if (priceInput.value !== '') changes.priceEstimate = Number(priceInput.value);
+    // dueInput 本身為 null 代表週期性模板（沒有這個欄位，維持原樣不送）；一次性項目則
+    // 一律送出，不是「有值才送」——清空到期時間也要能存回去，不然「清空＝不送」會讓
+    // 伺服器完全收不到這個欄位，Notion 裡的舊值就永遠清不掉（2026-07-15 真實案例，todo 那邊先發現）
+    if (dueInput) changes.due_date = dueInput.value ? dueInput.value.replace('T', ' ') : null;
+    try {
+      await patchShopping(item.id, changes);
+      onChanged();
+    } catch (err) {
+      alert(t('saveFailed'));
+    }
+  });
+
+  return form;
+}
+
+function buildPurchaseForm(item, onChanged) {
+  const form = el('div', 'edit-form');
+  const row = el('div', 'row-2');
+  form.appendChild(row);
+  // 故意不帶入 quantityNeeded/priceEstimate 當預設值——那是「預估」，這裡填的是「實際」，
+  // 直接帶入估計值容易讓使用者沒注意就把估計值當成真實花費記錄下去，汙染消費統計用的資料。
+  // 需要參考的話，清單那一列本身已經有顯示「數量：X｜預估：Y」。
+  const quantityInput = labeledInput(row, t('labelQuantityPurchased'), 'number', '');
+  const priceInput = labeledInput(row, t('labelActualPrice'), 'number', '');
+  const dateInput = labeledInput(form, t('labelPurchasedDate'), 'date', new Date().toISOString().slice(0, 10));
+
+  const actions = el('div', 'actions');
+  const confirmBtn = el('button', 'btn btn-success', t('confirmPurchase'));
+  const cancelBtn = el('button', 'btn btn-neutral', t('cancelEdit'));
+  actions.appendChild(confirmBtn);
+  actions.appendChild(cancelBtn);
+  form.appendChild(actions);
+
+  cancelBtn.addEventListener('click', () => form.remove());
+  confirmBtn.addEventListener('click', async () => {
+    const purchase = { purchasedDate: dateInput.value || new Date().toISOString().slice(0, 10) };
+    if (quantityInput.value !== '') purchase.quantityPurchased = Number(quantityInput.value);
+    if (priceInput.value !== '') purchase.actualPrice = Number(priceInput.value);
+    try {
+      await patchShopping(item.id, { purchase });
+      onChanged();
+    } catch (err) {
+      alert(t('saveFailed'));
+    }
+  });
+
+  return form;
+}
+
+// 滑動手勢：用 Pointer Events 統一處理觸控（手機）跟滑鼠（桌機測試/使用），拖曳超過
+// 門檻就固定顯示右側的取消按鈕（transform 位移），沒超過門檻就彈回原位。真的有拖曳過
+// 的話要攔截接下來的 click，不然放開手指後既顯示了取消按鈕、又誤觸發打開編輯表單
+function attachSwipe(swipeContent, onReveal) {
+  let startX = null;
+  let currentX = 0;
+  let dragged = false;
+  const THRESHOLD = 40;
+
+  function onStart(x) { startX = x; dragged = false; }
+  function onMove(x) {
+    if (startX === null) return;
+    currentX = x - startX;
+    if (Math.abs(currentX) > 8) dragged = true;
+  }
+  function onEnd() {
+    if (startX === null) return;
+    if (currentX < -THRESHOLD) {
+      swipeContent.classList.add('revealed');
+      if (onReveal) onReveal();
+    } else {
+      swipeContent.classList.remove('revealed');
+    }
+    startX = null;
+    currentX = 0;
+  }
+
+  swipeContent.addEventListener('pointerdown', (e) => onStart(e.clientX));
+  swipeContent.addEventListener('pointermove', (e) => onMove(e.clientX));
+  swipeContent.addEventListener('pointerup', onEnd);
+  swipeContent.addEventListener('pointercancel', onEnd);
+  swipeContent.addEventListener('click', (e) => {
+    if (dragged) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+}
+
+// 建立一列 Apple 風格的待購項目：圓圈（一次性點擊開啟標記已購買表單／週期性顯示循環
+// 圖示，不能直接點擊——那要靠 check_shopping_reminders 觸發的互動確認，不是清單頁操作）
+// + 急需驚嘆號 + 標題 + 備註副標 + 到期/下次提醒 + 買家/地點/數量/價格 + 分類標籤；
+// 外層包一層滑動手勢，滑到底露出紅色取消按鈕
+function buildRow(item, { onPurchase, onCancel, onEdit }) {
+  const isRecurring = item.type === '週期性';
+  const swipeRow = el('div', 'swipe-row');
+
+  const swipeAction = el('button', 'swipe-action', t('swipeDelete'));
+  swipeRow.appendChild(swipeAction);
+
+  const content = el('div', 'swipe-content');
+  swipeRow.appendChild(content);
+
+  const circle = el('div', isRecurring ? 'check-circle recurring-icon' : 'check-circle');
+  if (isRecurring) {
+    circle.textContent = '🔁';
+  } else {
+    circle.addEventListener('click', (e) => { e.stopPropagation(); onPurchase(); });
+  }
+  content.appendChild(circle);
+
+  const body = el('div', 'row-body');
+  const titleLine = el('div', 'row-title-line');
+  if (item.priority && PRIORITY_MARK[item.priority]) {
+    titleLine.appendChild(el('span', 'priority-mark', PRIORITY_MARK[item.priority]));
+  }
+  titleLine.appendChild(el('span', 'row-title', item.title));
+  body.appendChild(titleLine);
+
+  if (item.notes) body.appendChild(el('p', 'row-subtitle', item.notes));
+
+  const metaLine = el('div', 'row-meta-line');
+  const dueText = isRecurring ? (item.nextTrigger ? `${t('nextTriggerPrefix')}${item.nextTrigger}` : null)
+    : (item.dueDate ? `${t('duePrefix')}${item.dueDate}` : null);
+  if (dueText) metaLine.appendChild(el('span', 'row-due', dueText));
+
+  const details = [];
+  if (item.buyer && item.buyer !== '我自己') details.push(`${t('buyerPrefix')}${item.buyer}`);
+  if (item.location) details.push(`${t('locationPrefix')}${item.location}`);
+  if (item.quantityNeeded != null) details.push(`${t('quantityPrefix')}${item.quantityNeeded}`);
+  if (item.priceEstimate != null) details.push(`${t('priceEstimatePrefix')}${item.priceEstimate}`);
+  if (details.length > 0) metaLine.appendChild(el('span', 'row-detail', details.join(' ｜ ')));
+
+  if (isRecurring) metaLine.appendChild(el('span', 'row-category', t('recurringLabel')));
+  if (item.category) metaLine.appendChild(el('span', 'row-category', item.category));
+  if (metaLine.childNodes.length > 0) body.appendChild(metaLine);
+
+  content.appendChild(body);
+  content.appendChild(el('span', 'row-chevron', '›'));
+
+  content.addEventListener('click', () => onEdit());
+  swipeAction.addEventListener('click', (e) => { e.stopPropagation(); onCancel(); });
+  attachSwipe(content);
+
+  return swipeRow;
+}
+
+function renderPending(container, items, onChanged) {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.appendChild(el('p', 'empty', t('emptyPending')));
+    return;
+  }
+  for (const item of items) {
+    let formEl = null;
+    const closeForm = () => { if (formEl) { formEl.remove(); formEl = null; } };
+    const row = buildRow(item, {
+      onPurchase: () => {
+        if (formEl) { closeForm(); return; }
+        formEl = buildPurchaseForm(item, onChanged);
+        row.after(formEl);
+      },
+      onCancel: async () => {
+        const msg = item.type === '週期性' ? t('confirmCancelSeries') : t('confirmCancel');
+        if (!confirm(msg)) return;
+        try { await patchShopping(item.id, { status: '取消' }); onChanged(); }
+        catch (err) { alert(t('saveFailed')); }
+      },
+      onEdit: () => {
+        if (formEl) { closeForm(); return; }
+        formEl = buildEditForm(item, onChanged);
+        row.after(formEl);
+      }
+    });
+    container.appendChild(row);
+  }
+}
+
+function renderHistory(container, items) {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.appendChild(el('p', 'empty', t('emptyHistory')));
+    return;
+  }
+  // 依 purchasedDate 的年月分組——分組邏輯留在前端，後端只給乾淨的平面清單，
+  // 之後要改呈現方式（例如改成週視圖）不用動 API 合約
+  const groups = new Map();
+  for (const item of items) {
+    const month = (item.purchasedDate || '').slice(0, 7) || '未知';
+    if (!groups.has(month)) groups.set(month, []);
+    groups.get(month).push(item);
+  }
+  for (const [month, monthItems] of groups) {
+    container.appendChild(el('p', 'section-label', month));
+    for (const item of monthItems) {
+      container.appendChild(renderHistoryCard(item));
+    }
+  }
+}
+
+function renderHistoryCard(item) {
+  const card = el('div', 'card');
+  card.style.cursor = 'default';
+  const top = el('div', 'card-top');
+  top.appendChild(el('span', 'card-title', item.title));
+  top.appendChild(el('span', 'card-meta', item.purchasedDate || ''));
+  card.appendChild(top);
+
+  const metaLines = [];
+  if (item.buyer && item.buyer !== '我自己') metaLines.push(`${t('buyerPrefix')}${item.buyer}`);
+  if (item.location) metaLines.push(`${t('locationPrefix')}${item.location}`);
+  if (item.quantityPurchased != null) metaLines.push(`${t('quantityPrefix')}${item.quantityPurchased}`);
+  if (item.actualPrice != null) metaLines.push(`${t('actualPricePrefix')}${item.actualPrice}`);
+  if (item.notes) metaLines.push(`${t('notesPrefix')}${item.notes}`);
+  if (metaLines.length > 0) card.appendChild(el('p', 'card-meta', metaLines.join(' ｜ ')));
+
+  return card;
+}
+
+// 查詢結果跟預設的月份分組歷史共用同一個容器（history-sections），一次只顯示其中一種——
+// 查詢是「比價」用途，需要看到單價；預設歷史是「回顧」用途，依月份分組瀏覽，兩者呈現方式
+// 刻意不同，所以是切換內容而不是疊加
+function renderSearchResults(container, items) {
+  container.innerHTML = '';
+  if (items.length === 0) {
+    container.appendChild(el('p', 'empty', t('emptySearch')));
+    return;
+  }
+  for (const item of items) {
+    const card = el('div', 'card');
+    card.style.cursor = 'default';
+    const top = el('div', 'card-top');
+    top.appendChild(el('span', 'card-title', item.title));
+    top.appendChild(el('span', 'card-meta', item.purchasedDate || ''));
+    card.appendChild(top);
+
+    if (item.actualPrice != null) {
+      const priceLine = el('p', 'card-price', String(item.actualPrice));
+      if (item.unitPrice != null) {
+        priceLine.appendChild(el('span', 'card-unit', `(${item.unitPrice}${t('unitPriceSuffix')})`));
+      }
+      card.appendChild(priceLine);
+    }
+
+    const metaLines = [];
+    if (item.buyer && item.buyer !== '我自己') metaLines.push(`${t('buyerPrefix')}${item.buyer}`);
+    if (item.location) metaLines.push(`${t('locationPrefix')}${item.location}`);
+    if (item.quantityPurchased != null) metaLines.push(`${t('quantityPrefix')}${item.quantityPurchased}`);
+    if (item.notes) metaLines.push(`${t('notesPrefix')}${item.notes}`);
+    if (metaLines.length > 0) card.appendChild(el('p', 'card-meta', metaLines.join(' ｜ ')));
+
+    container.appendChild(card);
+  }
+}
+
+let lastPurchased = [];
+
+async function runSearch() {
+  const keyword = document.getElementById('search-keyword').value.trim();
+  const months = document.getElementById('search-months').value || '6';
+  const params = new URLSearchParams({ q: keyword, months });
+  const res = await fetch(`/api/shopping-search?${params}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const results = data.results || [];
+  document.getElementById('history-label').textContent = t('searchResultsLabel', results.length);
+  renderSearchResults(document.getElementById('history-sections'), results);
+}
+
+function clearSearch() {
+  document.getElementById('search-keyword').value = '';
+  document.getElementById('search-months').value = '6';
+  document.getElementById('history-label').textContent = t('historyLabel');
+  renderHistory(document.getElementById('history-sections'), lastPurchased);
+}
+
+const SMART_LISTS = [
+  { key: '急需', icon: '🔴', label: 'smartUrgent' },
+  { key: '一般', icon: '🔵', label: 'smartGeneral' },
+  { key: '想買', icon: '⭐', label: 'smartWant' },
+  { key: 'all', icon: '📋', label: 'smartAll' }
+];
+// 預設「全部」而不是「急需」——沒有急需項目時，急需分頁會顯示空清單，
+// 容易讓人誤以為整個待購清單是空的
+let currentSmartList = 'all';
+let allItems = [];
+
+function computeBucket(items, key) {
+  if (key === 'all') return items;
+  return items.filter(i => i.priority === key);
+}
+
+function renderSmartLists(container, items, onSelect) {
+  container.innerHTML = '';
+  for (const list of SMART_LISTS) {
+    const tile = el('div', `smart-tile${list.key === currentSmartList ? ' active' : ''}`);
+    tile.appendChild(el('div', 'smart-tile-icon', list.icon));
+    tile.appendChild(el('div', 'smart-tile-count', String(computeBucket(items, list.key).length)));
+    tile.appendChild(el('div', 'smart-tile-label', t(list.label)));
+    tile.addEventListener('click', () => onSelect(list.key));
+    container.appendChild(tile);
+  }
+}
+
+function renderAllUI() {
+  renderSmartLists(document.getElementById('smart-lists'), allItems, (key) => {
+    currentSmartList = key;
+    renderAllUI();
+  });
+  renderPending(document.getElementById('pending-list'), computeBucket(allItems, currentSmartList), load);
+}
+
+async function load() {
+  document.getElementById('title').textContent = t('title');
+  const res = await fetch('/api/shopping');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+
+  const pending = data.pending || [];
+  const purchased = data.purchased || [];
+  lastPurchased = purchased;
+  allItems = pending;
+
+  document.getElementById('pending-label').textContent = t('pendingLabel');
+  renderAllUI();
+
+  document.getElementById('history-label').textContent = t('historyLabel');
+  document.getElementById('search-keyword-label').textContent = t('searchKeywordLabel');
+  document.getElementById('search-months-label').textContent = t('searchMonthsLabel');
+  document.getElementById('search-btn').textContent = t('searchBtn');
+  document.getElementById('search-clear-btn').textContent = t('searchClearBtn');
+
+  renderHistory(document.getElementById('history-sections'), purchased);
+}
+
+document.getElementById('search-btn').addEventListener('click', () => {
+  runSearch().catch(err => { document.getElementById('error').textContent = err.message || String(err); });
+});
+document.getElementById('search-clear-btn').addEventListener('click', clearSearch);
+document.getElementById('search-keyword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('search-btn').click();
+});
+
+load().catch(err => {
+  document.getElementById('error').textContent = err.message || String(err);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+    "Tasks": { "database_id": "test-tasks-db", "data_source_id": "test-tasks-ds" },
+    "Shopping": { "database_id": "test-shopping-db", "data_source_id": "test-shopping-ds" },
+    "Ideas": { "database_id": "test-ideas-db", "data_source_id": "test-ideas-ds" }
+}
