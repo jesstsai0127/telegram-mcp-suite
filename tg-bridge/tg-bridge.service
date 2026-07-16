@@ -7,6 +7,13 @@ Wants=network-online.target
 Type=simple
 User=framework
 WorkingDirectory=/home/framework/projects/telegram-mcp-suite/tg-bridge
+# 這台主機沒有 IPv6 連線能力（curl -6 直接失敗），但 Node 18+ 預設會用 Happy Eyeballs
+# 演算法同時嘗試 IPv4/IPv6——IPv6 完全不可達時，這個機制會讓原本很快就能連上的 IPv4
+# 請求也跟著卡死逾時（實測：net.connect 直連同一個 IP 236ms 就成功，但 fetch() 透過
+# autoSelectFamily 逾時失敗）。關掉自動選擇，強制走傳統的循序連線，IPv4 fallback 才會
+# 正常運作。這是 2026-07-16 反覆出現的「tg-bridge 連不到（fetch failed）」health check
+# 警報、以及 heartbeat 自我判定壞掉重啟的根因。
+Environment=NODE_OPTIONS=--no-network-family-autoselection
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=5
