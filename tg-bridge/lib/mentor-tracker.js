@@ -4,8 +4,11 @@
 // 整合方式一致（獨立後端服務 + tg-bridge 新指令去呼叫）。
 
 const MENTOR_TRACKER_URL = process.env.MENTOR_TRACKER_URL || 'http://127.0.0.1:3009';
-const UI_HTTPS_URL = process.env.MENTOR_TRACKER_UI_HTTPS_URL ||
-    `https://yyds.tailbc46d2.ts.net:${process.env.MENTOR_TRACKER_HTTPS_PORT || 3010}/digest.html`;
+const MENTOR_TRACKER_HTTPS_BASE = process.env.MENTOR_TRACKER_HTTPS_BASE ||
+    `https://yyds.tailbc46d2.ts.net:${process.env.MENTOR_TRACKER_HTTPS_PORT || 3010}`;
+const UI_HTTPS_URL = process.env.MENTOR_TRACKER_UI_HTTPS_URL || `${MENTOR_TRACKER_HTTPS_BASE}/digest.html`;
+// 自助新增追蹤對象的表單頁——不用再透過對話請人工加入，見 public/mentor-add.html
+const UI_ADD_HTTPS_URL = process.env.MENTOR_TRACKER_UI_ADD_HTTPS_URL || `${MENTOR_TRACKER_HTTPS_BASE}/mentor-add.html`;
 
 async function checkContentFeed() {
     const res = await fetch(`${MENTOR_TRACKER_URL}/actions/check-content-feed`, { method: 'POST' });
@@ -15,4 +18,4 @@ async function checkContentFeed() {
     return data; // { digestText, needsReview }
 }
 
-module.exports = { UI_HTTPS_URL, checkContentFeed };
+module.exports = { UI_HTTPS_URL, UI_ADD_HTTPS_URL, checkContentFeed };
