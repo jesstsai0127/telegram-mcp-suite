@@ -12,6 +12,7 @@ const { handleIntent, resolveRecordSelection } = require('./lib/router');
 const { resolveTodoFlow } = require('./lib/todo-flow');
 const { resolveShoppingFlow, confirmShoppingRecurring } = require('./lib/shopping-flow');
 const commands = require('./lib/commands');
+const mentorTracker = require('./lib/mentor-tracker');
 const { syncSkillRegistry } = require('./lib/skill-registry');
 const settings = require('./lib/settings');
 
@@ -340,6 +341,23 @@ skillApp.post('/actions/check-shopping-reminders', async (req, res) => {
             ).catch(err => console.error('[check-shopping-reminders] 推播互動確認失敗：', err.message));
         }
         res.json({ success: true, result, error: null });
+    } catch (err) {
+        res.json({ success: false, result: null, error: err.message });
+    }
+});
+
+// mentor-tracker（獨立服務，~/mentor-tracker）的每日追蹤摘要——跟 finance-tracker 一樣，
+// 這個服務本身沒有 bot，這裡呼叫它的 action-route 拿組好的文字，用 tg-bridge 自己的 bot
+// 送出，附一個連到它自己 HTTPS 頁面的 WebApp 按鈕看完整版。
+skillApp.post('/actions/check-mentor-digest', async (req, res) => {
+    try {
+        const { digestText, needsReview } = await mentorTracker.checkContentFeed();
+        if (activeChatId) {
+            bot.sendMessage(activeChatId, digestText, {
+                reply_markup: { inline_keyboard: [[{ text: '查看完整版', web_app: { url: mentorTracker.UI_HTTPS_URL } }]] }
+            }).catch(err => console.error('[check-mentor-digest] 推播失敗：', err.message));
+        }
+        res.json({ success: true, result: { digestText, needsReview }, error: null });
     } catch (err) {
         res.json({ success: false, result: null, error: err.message });
     }
