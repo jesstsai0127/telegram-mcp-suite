@@ -6,6 +6,7 @@ const health = require('./health');
 const financeTracker = require('./finance-tracker');
 const todoFlow = require('./todo-flow');
 const shoppingFlow = require('./shopping-flow');
+const mentorTracker = require('./mentor-tracker');
 
 const SKILL_REGISTRY_PATH = process.env.SKILL_REGISTRY_PATH ||
     path.join(__dirname, '..', '..', '..', 'global', 'skill-registry.json');
@@ -29,6 +30,7 @@ const HELP_TEXT = `AXIS 使用說明
 /net_worth — 目前資產淨值（存款+持股-負債）
 /todo     — 待辦事項（新增/取消/修改/清單）
 /shopping — 待買清單（新增/清單，標記已購買在清單頁點圓圓）
+/mentors  — 名人追蹤（查看/自助新增追蹤對象）
 /help     — 使用說明`;
 
 async function checkStatus(activeChatId) {
@@ -63,6 +65,21 @@ async function getNetWorth() {
     };
 }
 
+// 自助新增/查看追蹤中的名人，不用每次都透過對話請人工加入——見 mentor-tracker
+// 專案的 public/mentor-add.html，這裡只回連結，跟 /net_worth 同一套 WebApp 按鈕慣例。
+async function getMentors() {
+    return {
+        text: '📬 名人追蹤\n\n查看目前追蹤名單，或新增一個人跟他的公開來源（Blog/YouTube/News 等）',
+        options: {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: '查看／新增追蹤對象', web_app: { url: mentorTracker.UI_ADD_HTTPS_URL } }
+                ]]
+            }
+        }
+    };
+}
+
 // today/projects 的完整清單改用網頁呈現（深色/Apple 風格，見 assistant/web-ui-style-guide.md），
 // Telegram 這邊只回連結，不再吐一大段文字
 const AXIS_PAGES_PORT = process.env.TODAY_PORT || 3005;
@@ -78,6 +95,7 @@ const COMMANDS = {
     '/net_worth': async () => getNetWorth(),
     '/todo': async () => todoFlow.menuMessage(),
     '/shopping': async () => shoppingFlow.menuMessage(),
+    '/mentors': async () => getMentors(),
     '/settings': async () => `⚙️ 一般設定\n${SETTINGS_UI_URL}`,
     '/help': async () => HELP_TEXT
 };
@@ -94,6 +112,7 @@ const COMMAND_DESCRIPTIONS = [
     { command: 'net_worth', description: '目前資產淨值（存款+持股-負債）' },
     { command: 'todo', description: '待辦事項（新增/清單，含已完成歷史）' },
     { command: 'shopping', description: '待買清單（新增/清單，含已購買歷史，標記已購買在清單頁點圓圓）' },
+    { command: 'mentors', description: '名人追蹤（查看/自助新增追蹤對象）' },
     { command: 'settings', description: '一般設定（例如預設提醒時間）' },
     { command: 'help', description: '使用說明' }
 ];
